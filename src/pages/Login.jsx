@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { loginUser } from "../api/authApi.js";
+import { loginUser, registerUser } from "../api/authApi.js";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { loadGoogleAPI, googleAuthService } from "../api/googleAuth.js";
@@ -7,11 +7,39 @@ import { loadGoogleAPI, googleAuthService } from "../api/googleAuth.js";
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
   const [isGoogleLoaded, setIsGoogleLoaded] = useState(false);
+  const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
 
   const { login } = useAuth();
   const navigate = useNavigate();
+
+  // Password validation
+  const validatePassword = (password) => {
+    if (!password) return "";
+    
+    const errors = [];
+    if (password.length < 6) errors.push("at least 6 characters");
+    if (!/[a-z]/.test(password)) errors.push("one lowercase letter");
+    if (!/[A-Z]/.test(password)) errors.push("one uppercase letter");
+    if (!/\d/.test(password)) errors.push("one number");
+    
+    return errors.length > 0 ? `Password must contain ${errors.join(", ")}` : "";
+  };
+
+  const handlePasswordChange = (e) => {
+    const newPassword = e.target.value;
+    setPassword(newPassword);
+    if (!isLogin) {
+      setPasswordError(validatePassword(newPassword));
+    }
+  };
 
   // Load Google API on component mount
   useEffect(() => {
@@ -36,24 +64,66 @@ const Login = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
+    setLoading(true);
+    
     try {
-      const result = await loginUser(email, password);
+      const result = await loginUser(email, password, rememberMe);
       if (result.success) {
-        login(result.user); // Pass user data to context
+        await login(result.user, result.tokens); // Pass user data and tokens to context
         navigate("/"); // Redirect to Home page after login
       } else {
         setError("Invalid credentials");
       }
     } catch (e) {
-      setError(e.message || "Invalid credentials");
+      setError(e.message || "Login failed. Please check your credentials.");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleGoogleLogin = (response) => {
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setError("");
+    
+    // Check password validation
+    const passwordValidationError = validatePassword(password);
+    if (passwordValidationError) {
+      setError(passwordValidationError);
+      return;
+    }
+    
+    setLoading(true);
+    
+    try {
+      const userData = {
+        firstName,
+        lastName,
+        email,
+        password,
+        phone: phone || undefined
+      };
+      
+      const result = await registerUser(userData);
+      if (result.success) {
+        await login(result.user, result.tokens); // Pass user data and tokens to context
+        navigate("/"); // Redirect to Home page after registration
+      } else {
+        setError("Registration failed");
+      }
+    } catch (e) {
+      setError(e.message || "Registration failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async (response) => {
     try {
       const result = googleAuthService.handleGoogleResponse(response);
       if (result.success) {
-        login(result.user); // Pass user data to context
+        // For Google login, we'll use the user data directly since it's already verified
+        // In a real app, you might want to send this to your backend for verification
+        await login(result.user); // Pass user data to context (no tokens for Google)
         navigate("/"); // Redirect to Home page
       } else {
         setError(result.error || "Google login failed");
@@ -66,7 +136,9 @@ const Login = () => {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">
       <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
-        <h2 className="text-3xl font-bold mb-6 text-center text-gray-800">Welcome Back</h2>
+        <h2 className="text-3xl font-bold mb-6 text-center text-gray-800">
+          {isLogin ? 'Welcome Back' : 'Create Account'}
+        </h2>
         
         {/* Google Sign-In Section */}
         <div className="mb-6">
@@ -103,10 +175,66 @@ const Login = () => {
           </div>
         </div>
 
-        {/* Traditional Login Form */}
+        {/* Toggle between Login and Register */}
+        <div className="mb-6">
+          <div className="flex bg-gray-100 rounded-lg p-1">
+            <button
+              type="button"
+              onClick={() => setIsLogin(true)}
+              className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition ${
+                isLogin
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsLogin(false)}
+              className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition ${
+                !isLogin
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Sign Up
+            </button>
+          </div>
+        </div>
+
+        {/* Form */}
         <div>
-          <h3 className="text-lg font-semibold mb-3 text-gray-700">Sign In with Email</h3>
-          <form onSubmit={handleLogin}>
+          <h3 className="text-lg font-semibold mb-3 text-gray-700">
+            {isLogin ? 'Sign In with Email' : 'Create Account with Email'}
+          </h3>
+          
+          <form onSubmit={isLogin ? handleLogin : handleRegister}>
+            {!isLogin && (
+              <>
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="First name"
+                    value={firstName}
+                    onChange={e => setFirstName(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Last name"
+                    value={lastName}
+                    onChange={e => setLastName(e.target.value)}
+                    required
+                  />
+                </div>
+              </>
+            )}
+            
             <div className="mb-4">
               <input
                 type="email"
@@ -117,26 +245,81 @@ const Login = () => {
                 required
               />
             </div>
+            
             <div className="mb-4">
               <input
                 type="password"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                  passwordError ? 'border-red-300' : 'border-gray-300'
+                }`}
                 placeholder="Enter your password"
                 value={password}
-                onChange={e => setPassword(e.target.value)}
+                onChange={handlePasswordChange}
                 required
+                minLength={6}
               />
+              {!isLogin && (
+                <div className="mt-1">
+                  {passwordError ? (
+                    <p className="text-xs text-red-500">{passwordError}</p>
+                  ) : (
+                    <p className="text-xs text-gray-500">
+                      Password must be at least 6 characters with uppercase, lowercase, and number
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
+            
+            {!isLogin && (
+              <div className="mb-4">
+                <input
+                  type="tel"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  placeholder="Phone number (optional)"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                />
+              </div>
+            )}
+            
+            {isLogin && (
+              <div className="mb-4 flex items-center">
+                <input
+                  type="checkbox"
+                  id="rememberMe"
+                  checked={rememberMe}
+                  onChange={e => setRememberMe(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                />
+                <label htmlFor="rememberMe" className="ml-2 block text-sm text-gray-700">
+                  Remember me
+                </label>
+              </div>
+            )}
+            
             {error && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-red-600 text-sm">{error}</p>
               </div>
             )}
+            
             <button
               type="submit"
-              className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-medium"
+              disabled={loading || (!isLogin && passwordError)}
+              className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Sign In
+              {loading ? (
+                <div className="flex items-center justify-center">
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  {isLogin ? 'Signing In...' : 'Creating Account...'}
+                </div>
+              ) : (
+                isLogin ? 'Sign In' : 'Create Account'
+              )}
             </button>
           </form>
         </div>
@@ -144,14 +327,22 @@ const Login = () => {
         {/* Additional Options */}
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600">
-            Don't have an account? 
-            <a href="#" className="text-blue-600 hover:text-blue-800 ml-1 font-medium">
-              Sign up here
-            </a>
+            {isLogin ? "Don't have an account?" : "Already have an account?"}
+            <button
+              onClick={() => {
+                setIsLogin(!isLogin);
+                setError("");
+              }}
+              className="text-blue-600 hover:text-blue-800 ml-1 font-medium"
+            >
+              {isLogin ? 'Sign up here' : 'Sign in here'}
+            </button>
           </p>
-          <a href="#" className="text-sm text-gray-500 hover:text-gray-700 mt-2 block">
-            Forgot your password?
-          </a>
+          {isLogin && (
+            <a href="#" className="text-sm text-gray-500 hover:text-gray-700 mt-2 block">
+              Forgot your password?
+            </a>
+          )}
         </div>
       </div>
     </div>
