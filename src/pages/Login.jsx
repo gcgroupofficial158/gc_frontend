@@ -17,6 +17,8 @@ const Login = () => {
   const [rememberMe, setRememberMe] = useState(false);
   const [passwordError, setPasswordError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [testingMode, setTestingMode] = useState(false);
+  const [showTestingPopup, setShowTestingPopup] = useState(false);
 
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -46,6 +48,38 @@ const Login = () => {
     setShowPassword(!showPassword);
   };
 
+  // Dummy login function for testing
+  const dummyLogin = async (email, password, isLoginMode) => {
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Show testing popup
+    setShowTestingPopup(true);
+    
+    // Create dummy user data
+    const dummyUser = {
+      id: 'test-user-123',
+      email: email,
+      firstName: isLoginMode ? 'Test' : firstName || 'Test',
+      lastName: isLoginMode ? 'User' : lastName || 'User',
+      name: isLoginMode ? 'Test User' : `${firstName || 'Test'} ${lastName || 'User'}`,
+      provider: 'email',
+      email_verified: true,
+      role: 'user'
+    };
+
+    const dummyTokens = {
+      accessToken: 'dummy-access-token-' + Date.now(),
+      refreshToken: 'dummy-refresh-token-' + Date.now()
+    };
+
+    return {
+      success: true,
+      user: dummyUser,
+      tokens: dummyTokens
+    };
+  };
+
   // Load Google API on component mount
   useEffect(() => {
     loadGoogleAPI()
@@ -72,7 +106,16 @@ const Login = () => {
     setLoading(true);
     
     try {
-      const result = await loginUser(email, password, rememberMe);
+      let result;
+      
+      if (testingMode) {
+        // Use dummy login for testing
+        result = await dummyLogin(email, password, true);
+      } else {
+        // Use real API
+        result = await loginUser(email, password, rememberMe);
+      }
+      
       if (result.success) {
         await login(result.user, result.tokens); // Pass user data and tokens to context
         navigate("/"); // Redirect to Home page after login
@@ -100,15 +143,24 @@ const Login = () => {
     setLoading(true);
     
     try {
-      const userData = {
-        firstName,
-        lastName,
-        email,
-        password,
-        phone: phone || undefined
-      };
+      let result;
       
-      const result = await registerUser(userData);
+      if (testingMode) {
+        // Use dummy registration for testing
+        result = await dummyLogin(email, password, false);
+      } else {
+        // Use real API
+        const userData = {
+          firstName,
+          lastName,
+          email,
+          password,
+          phone: phone || undefined
+        };
+        
+        result = await registerUser(userData);
+      }
+      
       if (result.success) {
         await login(result.user, result.tokens); // Pass user data and tokens to context
         navigate("/"); // Redirect to Home page after registration
@@ -347,6 +399,35 @@ const Login = () => {
           </form>
         </div>
 
+        {/* Testing Mode Toggle */}
+        <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="testingMode"
+                checked={testingMode}
+                onChange={e => setTestingMode(e.target.checked)}
+                className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded"
+              />
+              <label htmlFor="testingMode" className="ml-2 block text-sm text-yellow-800 font-medium">
+                Testing Mode (Backend Bypass)
+              </label>
+            </div>
+            <button
+              onClick={() => setShowTestingPopup(true)}
+              className="text-xs text-yellow-600 hover:text-yellow-800 underline"
+            >
+              Info
+            </button>
+          </div>
+          {testingMode && (
+            <p className="text-xs text-yellow-700 mt-2">
+              ⚠️ Testing mode enabled - Login will succeed without backend validation
+            </p>
+          )}
+        </div>
+
         {/* Additional Options */}
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600">
@@ -368,6 +449,46 @@ const Login = () => {
           )}
         </div>
       </div>
+
+      {/* Testing Mode Popup */}
+      {showTestingPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md mx-4">
+            <div className="flex items-center mb-4">
+              <div className="flex-shrink-0">
+                <svg className="h-8 w-8 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-lg font-medium text-gray-900">Testing Mode Active</h3>
+              </div>
+            </div>
+            <div className="mb-4">
+              <p className="text-sm text-gray-600">
+                <strong>Backend is not working, but for testing I proceed.</strong>
+              </p>
+              <p className="text-sm text-gray-600 mt-2">
+                When testing mode is enabled:
+              </p>
+              <ul className="text-sm text-gray-600 mt-2 list-disc list-inside">
+                <li>Any email/password combination will work</li>
+                <li>No actual backend validation occurs</li>
+                <li>Dummy user data is created</li>
+                <li>You can test the frontend flow completely</li>
+              </ul>
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setShowTestingPopup(false)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -21,10 +21,11 @@ export default function AuthProvider({ children }) {
         const refreshToken = localStorage.getItem('refreshToken');
         
         if (savedUser && savedAuth === 'true' && accessToken) {
-          // Validate the token with the backend
-          const isValid = await validateToken();
+          // Check if this is a testing mode token (dummy token)
+          const isTestingMode = accessToken.startsWith('dummy-access-token-');
           
-          if (isValid) {
+          if (isTestingMode) {
+            // For testing mode, always accept the token
             setUser(JSON.parse(savedUser));
             setIsAuthenticated(true);
             setTokens({
@@ -32,25 +33,37 @@ export default function AuthProvider({ children }) {
               refreshToken
             });
           } else {
-            // Token is invalid, try to refresh
-            if (refreshToken) {
-              try {
-                const refreshResult = await refreshAccessToken();
-                if (refreshResult.success) {
-                  setUser(JSON.parse(savedUser));
-                  setIsAuthenticated(true);
-                  setTokens(refreshResult.tokens);
-                } else {
+            // Validate the token with the backend
+            const isValid = await validateToken();
+            
+            if (isValid) {
+              setUser(JSON.parse(savedUser));
+              setIsAuthenticated(true);
+              setTokens({
+                accessToken,
+                refreshToken
+              });
+            } else {
+              // Token is invalid, try to refresh
+              if (refreshToken) {
+                try {
+                  const refreshResult = await refreshAccessToken();
+                  if (refreshResult.success) {
+                    setUser(JSON.parse(savedUser));
+                    setIsAuthenticated(true);
+                    setTokens(refreshResult.tokens);
+                  } else {
+                    // Refresh failed, clear everything
+                    clearAuthData();
+                  }
+                } catch (error) {
                   // Refresh failed, clear everything
                   clearAuthData();
                 }
-              } catch (error) {
-                // Refresh failed, clear everything
+              } else {
+                // No refresh token, clear everything
                 clearAuthData();
               }
-            } else {
-              // No refresh token, clear everything
-              clearAuthData();
             }
           }
         }
@@ -97,8 +110,8 @@ export default function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
-      // Call backend logout if we have tokens
-      if (tokens?.refreshToken) {
+      // Call backend logout if we have tokens and it's not testing mode
+      if (tokens?.refreshToken && !tokens.refreshToken.startsWith('dummy-refresh-token-')) {
         await logoutUser();
       }
     } catch (error) {
@@ -124,6 +137,11 @@ export default function AuthProvider({ children }) {
 
   const refreshTokens = async () => {
     try {
+      // If in testing mode, don't actually refresh tokens
+      if (tokens?.refreshToken?.startsWith('dummy-refresh-token-')) {
+        return true; // Always succeed in testing mode
+      }
+      
       const result = await refreshAccessToken();
       if (result.success) {
         updateTokens(result.tokens);
