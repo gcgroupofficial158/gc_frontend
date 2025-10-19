@@ -66,32 +66,32 @@ export default function Navbar() {
           >
             Publish
           </button>
-        </div>
+      </div>
         
         {/* Desktop User Menu */}
         <div className="hidden md:flex items-center space-x-4">
-          {isAuthenticated && user ? (
-            <>
-              <div className="text-sm text-gray-700">
-                Welcome, {user.name || user.email}
-              </div>
-              <img 
+        {isAuthenticated && user ? (
+          <>
+            <div className="text-sm text-gray-700">
+              Welcome, {user.name || user.email}
+            </div>
+            <img 
                 className="rounded-full w-8 h-8 cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all" 
-                src={user.picture || "/profile.jpg"} 
-                alt="Profile" 
+              src={user.picture || "/profile.jpg"} 
+              alt="Profile" 
                 onClick={() => {
                   navigate('/profile');
                   closeMobileMenu();
                 }}
-              />
-              <button 
+            />
+            <button 
                 onClick={handleLogout}
                 className="text-sm text-red-600 hover:text-red-800 font-medium cursor-pointer transition-colors"
-              >
-                Logout
-              </button>
-            </>
-          ) : (
+            >
+              Logout
+            </button>
+          </>
+        ) : (
             <button
               onClick={() => navigate('/login')}
               className="text-sm text-blue-600 hover:text-blue-800 font-medium cursor-pointer transition-colors"
@@ -231,11 +231,11 @@ export default function Navbar() {
                   closeMobileMenu();
                 }}
                 className="block w-full text-left px-3 py-2 text-base font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
-              >
-                Login
+          >
+            Login
               </button>
             </div>
-          )}
+        )}
         </div>
       </div>
     </nav>

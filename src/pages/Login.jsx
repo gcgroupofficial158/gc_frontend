@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { loginUser, registerUser } from "../api/authApi.js";
+import { loginUser, registerUser, googleAuth } from "../api/authApi.js";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { loadGoogleAPI, googleAuthService } from "../api/googleAuth.js";
+import { ENV_INFO, API_CONFIG } from "../config/environment.js";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -82,14 +83,26 @@ const Login = () => {
 
   // Load Google API on component mount
   useEffect(() => {
+    console.log('🔧 Google OAuth Debug Info:', {
+      clientId: GOOGLE_CONFIG.clientId,
+      redirectURI: GOOGLE_CONFIG.redirectURI,
+      environment: ENV_INFO.environment,
+      isDevelopment: ENV_INFO.isDevelopment
+    });
+    
     loadGoogleAPI()
       .then(() => {
+        console.log('✅ Google API loaded successfully');
         setIsGoogleLoaded(true);
         return googleAuthService.initGoogleAuth(handleGoogleLogin);
       })
       .catch((err) => {
-        console.error('Failed to load Google API:', err);
-        setError('Failed to load Google authentication');
+        console.error('❌ Failed to load Google API:', err);
+        if (err.message.includes('origin_mismatch') || err.message.includes('400')) {
+          setError('Google OAuth origin mismatch. Please check your Google Cloud Console settings and ensure http://localhost:5173 is added to Authorized JavaScript origins.');
+        } else {
+          setError('Failed to load Google authentication: ' + err.message);
+        }
       });
   }, []);
 
@@ -176,17 +189,57 @@ const Login = () => {
 
   const handleGoogleLogin = async (response) => {
     try {
-      const result = googleAuthService.handleGoogleResponse(response);
-      if (result.success) {
-        // For Google login, we'll use the user data directly since it's already verified
-        // In a real app, you might want to send this to your backend for verification
-        await login(result.user); // Pass user data to context (no tokens for Google)
-        navigate("/"); // Redirect to Home page
+      setLoading(true);
+      setError("");
+      
+      if (testingMode) {
+        // Use dummy Google login for testing
+        const dummyUser = {
+          id: 'google-test-user-123',
+          email: 'test@gmail.com',
+          firstName: 'Google',
+          lastName: 'User',
+          name: 'Google User',
+          provider: 'google',
+          email_verified: true,
+          picture: 'https://via.placeholder.com/150',
+          role: 'user'
+        };
+
+        const dummyTokens = {
+          accessToken: 'dummy-google-access-token-' + Date.now(),
+          refreshToken: 'dummy-google-refresh-token-' + Date.now()
+        };
+
+        await login(dummyUser, dummyTokens);
+        navigate('/dashboard');
       } else {
-        setError(result.error || "Google login failed");
+        // Use real Google OAuth with backend
+        const result = googleAuthService.handleGoogleResponse(response);
+        
+        if (result.success) {
+          // Send to backend for verification and token generation
+          const backendResult = await googleAuth(response.credential);
+          
+          if (backendResult.success) {
+            await login(backendResult.user, backendResult.tokens);
+            navigate('/dashboard');
+          } else {
+            setError(backendResult.message || 'Google authentication failed');
+          }
+        } else {
+          setError(result.error || 'Google login failed');
+        }
       }
-    } catch (err) {
-      setError("Google login failed");
+    } catch (error) {
+      console.error('Google login error:', error);
+      if (error.message.includes('400')) {
+        setError('Google OAuth configuration error. Please check your Google Cloud Console settings.');
+      } else {
+        setError('Google login failed. Please try again.');
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -305,15 +358,15 @@ const Login = () => {
             
             <div className="mb-4">
               <div className="relative">
-                <input
+              <input
                   type={showPassword ? "text" : "password"}
                   className={`w-full px-4 py-3 pr-12 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                     passwordError ? 'border-red-300' : 'border-gray-300'
                   }`}
-                  placeholder="Enter your password"
-                  value={password}
+                placeholder="Enter your password"
+                value={password}
                   onChange={handlePasswordChange}
-                  required
+                required
                   minLength={6}
                 />
                 <button
@@ -399,8 +452,55 @@ const Login = () => {
           </form>
         </div>
 
+        {/* Environment Info */}
+        <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <div className="w-3 h-3 bg-green-500 rounded-full mr-2"></div>
+              <span className="text-sm text-blue-800 font-medium">
+                Environment: {ENV_INFO.environment}
+              </span>
+            </div>
+            <span className="text-xs text-blue-600">
+              Real Backend Mode
+            </span>
+          </div>
+          <p className="text-xs text-blue-700 mt-1">
+            API: {API_CONFIG.baseURL}
+          </p>
+          <p className="text-xs text-orange-600 mt-1">
+            ⚠️ Make sure backend is running on port 3001
+          </p>
+        </div>
+
+        {/* Google OAuth Debug Info */}
+        <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <div className={`w-3 h-3 rounded-full mr-2 ${isGoogleLoaded ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <span className="text-sm text-gray-800 font-medium">
+                Google OAuth: {isGoogleLoaded ? 'Loaded' : 'Not Loaded'}
+              </span>
+            </div>
+            <span className="text-xs text-gray-600">
+              Client ID: {GOOGLE_CONFIG.clientId.substring(0, 20)}...
+            </span>
+          </div>
+          <p className="text-xs text-gray-700 mt-1">
+            Redirect URI: {GOOGLE_CONFIG.redirectURI}
+          </p>
+          <p className="text-xs text-gray-700 mt-1">
+            Current Origin: {window.location.origin}
+          </p>
+          {!isGoogleLoaded && (
+            <p className="text-xs text-red-600 mt-1">
+              ❌ Google OAuth failed to load. Check console for errors.
+            </p>
+          )}
+        </div>
+
         {/* Testing Mode Toggle */}
-        <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+        <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <input
@@ -443,9 +543,9 @@ const Login = () => {
             </button>
           </p>
           {isLogin && (
-            <a href="#" className="text-sm text-gray-500 hover:text-gray-700 mt-2 block">
-              Forgot your password?
-            </a>
+          <a href="#" className="text-sm text-gray-500 hover:text-gray-700 mt-2 block">
+            Forgot your password?
+          </a>
           )}
         </div>
       </div>

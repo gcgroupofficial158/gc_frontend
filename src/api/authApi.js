@@ -1,7 +1,9 @@
 // src/api/authApi.js
 
 // Backend API configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001/api/v1';
+import { API_CONFIG, ENV_INFO } from '../config/environment.js';
+
+const API_BASE_URL = API_CONFIG.baseURL;
 
 // Helper function to make API requests
 async function apiRequest(endpoint, options = {}) {
@@ -31,8 +33,89 @@ async function apiRequest(endpoint, options = {}) {
     return data;
   } catch (error) {
     console.error('API request failed:', error);
-    throw error;
+    throw error; // Don't fallback automatically - let the calling function handle it
   }
+}
+
+// Fallback function for when backend is not available
+async function handleFallbackRequest(endpoint, options) {
+  // Simulate API delay
+  await new Promise(resolve => setTimeout(resolve, 500));
+  
+  // Mock responses based on endpoint
+  if (endpoint === '/auth/login') {
+    return {
+      success: true,
+      message: 'Login successful (fallback mode)',
+      data: {
+        user: {
+          id: 'fallback-user-123',
+          firstName: 'Test',
+          lastName: 'User',
+          email: 'test@example.com',
+          emailVerified: true,
+          provider: 'email',
+          role: 'user'
+        },
+        tokens: {
+          accessToken: 'fallback-access-token-' + Date.now(),
+          refreshToken: 'fallback-refresh-token-' + Date.now()
+        }
+      }
+    };
+  }
+  
+  if (endpoint === '/auth/register') {
+    return {
+      success: true,
+      message: 'Registration successful (fallback mode)',
+      data: {
+        user: {
+          id: 'fallback-user-' + Date.now(),
+          firstName: 'New',
+          lastName: 'User',
+          email: 'newuser@example.com',
+          emailVerified: true,
+          provider: 'email',
+          role: 'user'
+        },
+        tokens: {
+          accessToken: 'fallback-access-token-' + Date.now(),
+          refreshToken: 'fallback-refresh-token-' + Date.now()
+        }
+      }
+    };
+  }
+  
+  if (endpoint === '/auth/google') {
+    return {
+      success: true,
+      message: 'Google authentication successful (fallback mode)',
+      data: {
+        user: {
+          id: 'google-fallback-user-123',
+          firstName: 'Google',
+          lastName: 'User',
+          email: 'google@example.com',
+          emailVerified: true,
+          provider: 'google',
+          profilePicture: 'https://via.placeholder.com/150',
+          role: 'user'
+        },
+        tokens: {
+          accessToken: 'fallback-google-access-token-' + Date.now(),
+          refreshToken: 'fallback-google-refresh-token-' + Date.now()
+        }
+      }
+    };
+  }
+  
+  // Default fallback response
+  return {
+    success: true,
+    message: 'Request successful (fallback mode)',
+    data: {}
+  };
 }
 
 // Traditional email/password login
@@ -70,6 +153,10 @@ export async function loginUser(email, password, rememberMe = false) {
       throw new Error(response.message || 'Login failed');
     }
   } catch (error) {
+    // Check if it's a network error (backend not available)
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+      throw new Error('Backend server is not running. Please start the backend server or enable testing mode.');
+    }
     throw new Error(error.message || 'Login failed');
   }
 }
@@ -331,6 +418,58 @@ export async function deactivateAllSessions() {
     }
   } catch (error) {
     throw new Error(error.message || 'Failed to deactivate sessions');
+  }
+}
+
+// Google OAuth authentication
+export async function googleAuth(idToken) {
+  try {
+    const response = await apiRequest('/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ idToken })
+    });
+    
+    if (response.success) {
+      // Store tokens in localStorage
+      localStorage.setItem('accessToken', response.data.tokens.accessToken);
+      localStorage.setItem('refreshToken', response.data.tokens.refreshToken);
+      
+      return {
+        success: true,
+        user: response.data.user,
+        tokens: response.data.tokens
+      };
+    } else {
+      throw new Error(response.message || 'Google authentication failed');
+    }
+  } catch (error) {
+    throw new Error(error.message || 'Google authentication failed');
+  }
+}
+
+// Google OAuth callback
+export async function googleCallback(code, state) {
+  try {
+    const response = await apiRequest('/auth/google/callback', {
+      method: 'POST',
+      body: JSON.stringify({ code, state })
+    });
+    
+    if (response.success) {
+      // Store tokens in localStorage
+      localStorage.setItem('accessToken', response.data.tokens.accessToken);
+      localStorage.setItem('refreshToken', response.data.tokens.refreshToken);
+      
+      return {
+        success: true,
+        user: response.data.user,
+        tokens: response.data.tokens
+      };
+    } else {
+      throw new Error(response.message || 'Google OAuth callback failed');
+    }
+  } catch (error) {
+    throw new Error(error.message || 'Google OAuth callback failed');
   }
 }
   

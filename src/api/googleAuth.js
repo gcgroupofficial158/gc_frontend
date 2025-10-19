@@ -1,8 +1,9 @@
 // Google OAuth configuration and service for client-side authentication
+import { GOOGLE_CONFIG } from '../config/environment.js';
 
 // Google OAuth configuration
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || 'your-google-client-id';
-const GOOGLE_REDIRECT_URI = import.meta.env.VITE_GOOGLE_REDIRECT_URI || 'http://localhost:5173';
+const GOOGLE_CLIENT_ID = GOOGLE_CONFIG.clientId;
+const GOOGLE_REDIRECT_URI = GOOGLE_CONFIG.redirectURI;
 
 // Google OAuth service
 export const googleAuthService = {
@@ -10,13 +11,20 @@ export const googleAuthService = {
   initGoogleAuth: (callback) => {
     return new Promise((resolve, reject) => {
       if (typeof window !== 'undefined' && window.google) {
-        window.google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: callback || handleGoogleResponse,
-          auto_select: false,
-          cancel_on_tap_outside: true,
-        });
-        resolve();
+        try {
+          window.google.accounts.id.initialize({
+            client_id: GOOGLE_CLIENT_ID,
+            callback: callback || handleGoogleResponse,
+            auto_select: false,
+            cancel_on_tap_outside: true,
+            use_fedcm_for_prompt: false,
+            ux_mode: 'popup',
+          });
+          resolve();
+        } catch (error) {
+          console.error('Google OAuth initialization error:', error);
+          reject(new Error('Google OAuth initialization failed: ' + error.message));
+        }
       } else {
         reject(new Error('Google API not loaded'));
       }
@@ -34,7 +42,8 @@ export const googleAuthService = {
           text: 'signin_with',
           shape: 'rectangular',
           logo_alignment: 'left',
-          width: '100%'
+          width: '100%',
+          type: 'standard'
         }
       );
     }
@@ -68,6 +77,29 @@ export const googleAuthService = {
     if (typeof window !== 'undefined' && window.google) {
       window.google.accounts.id.disableAutoSelect();
     }
+  },
+
+  // Alternative OAuth flow using popup
+  signInWithPopup: () => {
+    return new Promise((resolve, reject) => {
+      if (typeof window !== 'undefined' && window.google) {
+        const client = window.google.accounts.oauth2.initCodeClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: 'openid email profile',
+          ux_mode: 'popup',
+          callback: (response) => {
+            if (response.code) {
+              resolve(response);
+            } else {
+              reject(new Error('No authorization code received'));
+            }
+          }
+        });
+        client.requestCode();
+      } else {
+        reject(new Error('Google API not loaded'));
+      }
+    });
   }
 };
 
