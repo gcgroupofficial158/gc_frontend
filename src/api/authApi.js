@@ -44,6 +44,45 @@ async function handleFallbackRequest(endpoint, options) {
   
   // Mock responses based on endpoint
   if (endpoint === '/auth/login') {
+    // Parse the request body to get email and password
+    let email = '';
+    let password = '';
+    
+    try {
+      const body = JSON.parse(options.body || '{}');
+      email = body.email || '';
+      password = body.password || '';
+    } catch (e) {
+      // If we can't parse the body, use defaults
+    }
+    
+    // Simulate different login scenarios based on email/password
+    if (!email || !password) {
+      return {
+        success: false,
+        message: 'Email and password are required',
+        statusCode: 400
+      };
+    }
+    
+    // Simulate invalid credentials for specific test cases
+    if (email === 'wrong@example.com' || password === 'wrongpassword') {
+      return {
+        success: false,
+        message: 'Invalid email or password. Please check your credentials.',
+        statusCode: 401
+      };
+    }
+    
+    if (email === 'notfound@example.com') {
+      return {
+        success: false,
+        message: 'User not found. Please check your email address.',
+        statusCode: 404
+      };
+    }
+    
+    // For any other email/password combination, simulate successful login
     return {
       success: true,
       message: 'Login successful (fallback mode)',
@@ -52,7 +91,7 @@ async function handleFallbackRequest(endpoint, options) {
           id: 'fallback-user-123',
           firstName: 'Test',
           lastName: 'User',
-          email: 'test@example.com',
+          email: email,
           emailVerified: true,
           provider: 'email',
           role: 'user'
@@ -153,11 +192,31 @@ export async function loginUser(email, password, rememberMe = false) {
       throw new Error(response.message || 'Login failed');
     }
   } catch (error) {
+    console.error('Login API error:', error);
+    
     // Check if it's a network error (backend not available)
-    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+    if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError') || error.message.includes('aborted')) {
       throw new Error('Backend server is not running. Please start the backend server or enable testing mode.');
     }
-    throw new Error(error.message || 'Login failed');
+    
+    // Check for specific HTTP status codes
+    if (error.message.includes('401')) {
+      throw new Error('Invalid email or password. Please check your credentials.');
+    }
+    
+    if (error.message.includes('404')) {
+      throw new Error('User not found. Please check your email address.');
+    }
+    
+    if (error.message.includes('400')) {
+      throw new Error('Invalid request. Please check your input.');
+    }
+    
+    if (error.message.includes('500')) {
+      throw new Error('Server error. Please try again later.');
+    }
+    
+    throw new Error(error.message || 'Login failed. Please try again.');
   }
 }
 

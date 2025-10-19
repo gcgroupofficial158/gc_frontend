@@ -12,7 +12,7 @@ export const API_CONFIG = {
     : import.meta.env.VITE_API_BASE_URL_PROD || 'https://your-backend-domain.com/api/v1',
   
   // Fallback for when backend is not available
-  fallbackMode: false, // Disable fallback mode - always try real backend first
+  fallbackMode: isDevelopment, // Enable fallback mode in development for better error handling
   
   // Timeout settings
   timeout: 10000, // 10 seconds
