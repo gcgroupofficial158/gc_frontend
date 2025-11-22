@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { validateToken, refreshAccessToken, logoutUser } from '../api/authApi';
+import socketService from '../services/socketService';
 
 const AuthContext = createContext();
 
@@ -34,17 +35,52 @@ export default function AuthProvider({ children }) {
             });
           } else {
             // Validate the token with the backend
-            const isValid = await validateToken();
-            
-            if (isValid) {
-              setUser(JSON.parse(savedUser));
-              setIsAuthenticated(true);
-              setTokens({
-                accessToken,
-                refreshToken
-              });
-            } else {
-              // Token is invalid, try to refresh
+            try {
+              const isValid = await validateToken();
+              
+              if (isValid) {
+                setUser(JSON.parse(savedUser));
+                setIsAuthenticated(true);
+                const userTokens = {
+                  accessToken,
+                  refreshToken
+                };
+                setTokens(userTokens);
+                
+                // Connect to Socket.io for real-time features
+                socketService.connect(accessToken);
+              } else {
+                // Token is invalid, try to refresh
+                if (refreshToken) {
+                  try {
+                    const refreshResult = await refreshAccessToken();
+                    if (refreshResult.success) {
+                      setUser(JSON.parse(savedUser));
+                      setIsAuthenticated(true);
+                      setTokens(refreshResult.tokens);
+                      
+                      // Connect to Socket.io for real-time features
+                      socketService.connect(refreshResult.tokens.accessToken);
+                    } else {
+                      // Refresh failed, clear everything
+                      console.warn('Token validation and refresh failed, clearing auth');
+                      clearAuthData();
+                    }
+                  } catch (error) {
+                    // Refresh failed, clear everything
+                    console.warn('Token refresh error:', error);
+                    clearAuthData();
+                  }
+                } else {
+                  // No refresh token, clear everything
+                  console.warn('No refresh token available, clearing auth');
+                  clearAuthData();
+                }
+              }
+            } catch (error) {
+              // If validateToken throws an error (network issue, etc.), 
+              // don't immediately clear auth - try refresh first
+              console.warn('Token validation error:', error);
               if (refreshToken) {
                 try {
                   const refreshResult = await refreshAccessToken();
@@ -52,16 +88,15 @@ export default function AuthProvider({ children }) {
                     setUser(JSON.parse(savedUser));
                     setIsAuthenticated(true);
                     setTokens(refreshResult.tokens);
+                    socketService.connect(refreshResult.tokens.accessToken);
                   } else {
-                    // Refresh failed, clear everything
                     clearAuthData();
                   }
-                } catch (error) {
-                  // Refresh failed, clear everything
+                } catch (refreshError) {
+                  console.warn('Token refresh also failed:', refreshError);
                   clearAuthData();
                 }
               } else {
-                // No refresh token, clear everything
                 clearAuthData();
               }
             }
@@ -101,6 +136,11 @@ export default function AuthProvider({ children }) {
       if (userTokens) {
         localStorage.setItem('accessToken', userTokens.accessToken);
         localStorage.setItem('refreshToken', userTokens.refreshToken);
+        
+        // Connect to Socket.io for real-time features
+        if (!userTokens.accessToken.startsWith('dummy-access-token-')) {
+          socketService.connect(userTokens.accessToken);
+        }
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -110,6 +150,9 @@ export default function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
+      // Disconnect Socket.io
+      socketService.disconnect();
+      
       // Call backend logout if we have tokens and it's not testing mode
       if (tokens?.refreshToken && !tokens.refreshToken.startsWith('dummy-refresh-token-')) {
         await logoutUser();
@@ -145,13 +188,21 @@ export default function AuthProvider({ children }) {
       const result = await refreshAccessToken();
       if (result.success) {
         updateTokens(result.tokens);
+        // Reconnect Socket.io with new token
+        if (result.tokens.accessToken) {
+          socketService.disconnect();
+          socketService.connect(result.tokens.accessToken);
+        }
         return true;
       }
       return false;
     } catch (error) {
       console.error('Token refresh error:', error);
-      // If refresh fails, logout user
-      await logout();
+      // Only logout if refresh token is actually expired/invalid
+      // Don't logout on network errors - let user retry
+      if (error.message?.includes('expired') || error.message?.includes('invalid')) {
+        await logout();
+      }
       return false;
     }
   };
@@ -166,7 +217,8 @@ export default function AuthProvider({ children }) {
       logout, 
       updateUser,
       updateTokens,
-      refreshTokens
+      refreshTokens,
+      socketService
     }}>
       {children}
     </AuthContext.Provider>

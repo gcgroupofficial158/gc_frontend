@@ -297,25 +297,39 @@ export async function refreshAccessToken() {
       throw new Error('No refresh token available');
     }
 
-    const response = await apiRequest('/auth/refresh-token', {
+    // Use original fetch to bypass the interceptor and prevent infinite loop
+    // Import originalFetch from apiInterceptor (it's set up before this module loads)
+    const { originalFetch } = await import('./apiInterceptor');
+    const API_BASE_URL = API_CONFIG.baseURL;
+    const url = `${API_BASE_URL}/auth/refresh-token`;
+    
+    const response = await originalFetch(url, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({ refreshToken })
     });
 
-    if (response.success) {
-      // Update tokens in localStorage
-      localStorage.setItem('accessToken', response.data.accessToken);
-      localStorage.setItem('refreshToken', response.data.refreshToken);
-      
-      return {
-        success: true,
-        tokens: response.data
-      };
-    } else {
-      throw new Error(response.message || 'Token refresh failed');
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      // If refresh fails, clear tokens
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      throw new Error(data.message || 'Token refresh failed');
     }
+
+    // Update tokens in localStorage
+    localStorage.setItem('accessToken', data.data.accessToken);
+    localStorage.setItem('refreshToken', data.data.refreshToken);
+    
+    return {
+      success: true,
+      tokens: data.data
+    };
   } catch (error) {
-    // If refresh fails, clear tokens and redirect to login
+    // If refresh fails, clear tokens
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     throw error;
@@ -421,9 +435,21 @@ export async function resetPassword(token, password) {
 // Validate token
 export async function validateToken() {
   try {
+    const accessToken = localStorage.getItem('accessToken');
+    if (!accessToken) {
+      return false;
+    }
+
+    // Skip validation for testing mode tokens
+    if (accessToken.startsWith('dummy-access-token-')) {
+      return true;
+    }
+
     const response = await apiRequest('/auth/validate-token');
-    return response.success;
+    return response.success === true;
   } catch (error) {
+    console.warn('Token validation error:', error);
+    // Return false on error, but don't throw - let the caller handle refresh
     return false;
   }
 }

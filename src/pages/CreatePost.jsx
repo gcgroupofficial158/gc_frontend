@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import socketService from '../services/socketService';
 
 const CreatePost = () => {
   const { user, isAuthenticated } = useAuth();
@@ -11,9 +12,9 @@ const CreatePost = () => {
 
   const [postData, setPostData] = useState({
     text: '',
-    type: 'post', // post, paper_share, collaboration_request
+    type: 'post',
     tags: '',
-    visibility: 'public', // public, connections_only, private
+    visibility: 'public',
     attachment: null
   });
 
@@ -38,16 +39,50 @@ const CreatePost = () => {
     setError('');
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      setSuccess(true);
+      // Parse tags
+      const tags = postData.tags
+        ? postData.tags.split(',').map(tag => tag.trim()).filter(tag => tag)
+        : [];
+
+      // Prepare post data
+      const postContent = {
+        type: postData.type,
+        content: {
+          text: postData.text
+        },
+        tags: tags,
+        visibility: postData.visibility
+      };
+
+      // Create post via Socket.io (real-time)
+      socketService.createPost(postContent);
+
+      // Listen for post creation confirmation
+      const handlePostCreated = (data) => {
+        if (data.success) {
+          setSuccess(true);
+          setTimeout(() => {
+            navigate('/feed');
+          }, 1500);
+        }
+      };
+
+      const handlePostError = (data) => {
+        setError(data.error || 'Failed to create post. Please try again.');
+        setLoading(false);
+      };
+
+      socketService.on('post:created', handlePostCreated);
+      socketService.on('post:error', handlePostError);
+
+      // Cleanup listeners after 5 seconds
       setTimeout(() => {
-        navigate('/feed');
-      }, 2000);
+        socketService.off('post:created', handlePostCreated);
+        socketService.off('post:error', handlePostError);
+      }, 5000);
+
     } catch (err) {
       setError('Failed to create post. Please try again.');
-    } finally {
       setLoading(false);
     }
   };
@@ -66,9 +101,9 @@ const CreatePost = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Post Shared!</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Post Created!</h2>
           <p className="text-gray-600 mb-4">
-            Your post has been shared with the research community.
+            Your post has been shared in real-time with the community.
           </p>
           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
         </div>
@@ -78,7 +113,6 @@ const CreatePost = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Main Content */}
       <main className="w-full py-8">
         <div className="w-[85%] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-white rounded-lg shadow">
@@ -179,13 +213,7 @@ const CreatePost = () => {
                 onChange={handleInputChange}
                 rows={6}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                placeholder={
-                  postData.type === 'paper_share' 
-                    ? "Share your thoughts about a research paper, methodology, or findings..."
-                    : postData.type === 'collaboration_request'
-                    ? "Describe your research project and what kind of collaboration you're looking for..."
-                    : "Share your research updates, thoughts, or announcements..."
-                }
+                placeholder="Share your research updates, thoughts, or announcements..."
                 required
               />
               <div className="mt-2 flex justify-between text-sm text-gray-500">
@@ -227,39 +255,6 @@ const CreatePost = () => {
                 <option value="connections_only">Connections Only - Only your connections</option>
                 <option value="private">Private - Only you</option>
               </select>
-            </div>
-
-            {/* File Attachment */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Attach File (optional)
-              </label>
-              <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg">
-                <div className="space-y-1 text-center">
-                  <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  <div className="flex text-sm text-gray-600">
-                    <label htmlFor="file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-blue-500">
-                      <span>Upload a file</span>
-                      <input
-                        id="file-upload"
-                        name="file-upload"
-                        type="file"
-                        onChange={handleFileChange}
-                        className="sr-only"
-                      />
-                    </label>
-                    <p className="pl-1">or drag and drop</p>
-                  </div>
-                  <p className="text-xs text-gray-500">PDF, DOC, images up to 10MB</p>
-                </div>
-              </div>
-              {postData.attachment && (
-                <p className="mt-2 text-sm text-green-600">
-                  Selected: {postData.attachment.name}
-                </p>
-              )}
             </div>
 
             {/* Error Message */}
