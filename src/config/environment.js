@@ -9,7 +9,7 @@ export const API_CONFIG = {
   // Select API URL based on environment
   baseURL: isDevelopment 
     ? import.meta.env.VITE_API_BASE_URL_DEV || 'http://localhost:3001/api/v1'
-    : import.meta.env.VITE_API_BASE_URL_PROD || 'https://your-backend-domain.com/api/v1',
+    : import.meta.env.VITE_API_BASE_URL_PROD || 'https://gc-backend-4uxu.onrender.com/api/v1',
   
   // Fallback for when backend is not available
   fallbackMode: isDevelopment, // Enable fallback mode in development for better error handling
