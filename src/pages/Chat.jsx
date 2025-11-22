@@ -33,17 +33,15 @@ const ImageDisplay = ({ attachment, baseURL }) => {
     }
     
     setImageUrl(url);
-    if (import.meta.env.DEV) {
-      console.log('🖼️ Constructed image URL:', {
-        original: attachment?.url,
-        baseURL,
-        baseUrl: baseURL.replace('/api/v1', ''),
-        attachmentUrl: attachment?.url?.startsWith('/') ? attachment.url : `/${attachment?.url}`,
-        fullUrl: url,
-        hasAttachment: !!attachment,
-        hasUrl: !!attachment?.url
-      });
-    }
+    console.log('🖼️ Constructed image URL:', {
+      original: attachment?.url,
+      baseURL,
+      baseUrl: baseURL.replace('/api/v1', ''),
+      attachmentUrl: attachment?.url?.startsWith('/') ? attachment.url : `/${attachment?.url}`,
+      fullUrl: url,
+      hasAttachment: !!attachment,
+      hasUrl: !!attachment?.url
+    });
 
     // Try to load image as blob if direct loading fails
     if (url) {
@@ -66,14 +64,10 @@ const ImageDisplay = ({ attachment, baseURL }) => {
           }
           blobUrlRef.current = newBlobUrl;
           setBlobUrl(newBlobUrl);
-          if (import.meta.env.DEV) {
-            console.log('✅ Image loaded as blob:', newBlobUrl);
-          }
+          console.log('✅ Image loaded as blob:', newBlobUrl);
         })
         .catch(err => {
-          if (import.meta.env.DEV) {
-            console.warn('⚠️ Could not load image as blob, will try direct URL:', err);
-          }
+          console.warn('⚠️ Could not load image as blob, will try direct URL:', err);
           // Will fall back to direct URL
         });
     }
@@ -91,16 +85,14 @@ const ImageDisplay = ({ attachment, baseURL }) => {
   // Force reload image if it fails
   const handleImageError = (e) => {
     const img = e.target;
-    if (import.meta.env.DEV) {
-      console.error('❌ Image failed to load:', {
-        imageUrl,
-        blobUrl,
-        attemptedSrc: img.src,
-        naturalWidth: img.naturalWidth,
-        naturalHeight: img.naturalHeight,
-        complete: img.complete
-      });
-    }
+    console.error('❌ Image failed to load:', {
+      imageUrl,
+      blobUrl,
+      attemptedSrc: img.src,
+      naturalWidth: img.naturalWidth,
+      naturalHeight: img.naturalHeight,
+      complete: img.complete
+    });
     
     // If we have a blob URL, try using it
     if (blobUrl && img.src !== blobUrl) {
@@ -142,9 +134,7 @@ const ImageDisplay = ({ attachment, baseURL }) => {
           className="text-blue-600 hover:underline text-sm"
           onClick={(e) => {
             e.stopPropagation();
-            if (import.meta.env.DEV) {
-              console.log('Opening image URL:', imageUrl);
-            }
+            console.log('Opening image URL:', imageUrl);
           }}
         >
           Open in new tab
@@ -166,12 +156,8 @@ const ImageDisplay = ({ attachment, baseURL }) => {
         src={srcToUse}
         alt="Shared image"
         className="max-w-full max-h-64 rounded-lg object-cover cursor-pointer"
-        loading="lazy"
-        decoding="async"
         onLoad={() => {
-          if (import.meta.env.DEV) {
-            console.log('✅ Image loaded successfully:', srcToUse);
-          }
+          console.log('✅ Image loaded successfully:', srcToUse);
           setImageError(false);
         }}
         onError={handleImageError}
