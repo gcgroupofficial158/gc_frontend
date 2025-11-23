@@ -206,6 +206,7 @@ const Chat = () => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(null); // messageId for which emoji picker is shown
   const [showInputEmojiPicker, setShowInputEmojiPicker] = useState(false); // For message input emoji picker
   const [hoveredMessageId, setHoveredMessageId] = useState(null); // Track which message is hovered
+  const [showSidebar, setShowSidebar] = useState(false); // For mobile sidebar toggle
 
   // Check if user is near bottom of messages
   const isNearBottom = () => {
@@ -215,44 +216,71 @@ const Chat = () => {
     return container.scrollHeight - container.scrollTop - container.clientHeight < threshold;
   };
 
-  // Scroll to bottom of messages
+  // Scroll to bottom of messages - improved for mobile
   const scrollToBottom = (force = false, instant = false) => {
     // Only auto-scroll if user is near bottom or forced
     if (!force && !isNearBottom()) {
       return;
     }
     
-    // Use setTimeout to ensure DOM is updated
-    setTimeout(() => {
-      if (messagesEndRef.current) {
+    // Use requestAnimationFrame for better performance on mobile
+    const scroll = () => {
+      if (messagesContainerRef.current) {
+        const container = messagesContainerRef.current;
+        const targetScroll = container.scrollHeight - container.clientHeight;
+        
+        if (instant) {
+          // Instant scroll for initial load
+          container.scrollTop = targetScroll;
+        } else {
+          // Smooth scroll for new messages
+          container.scrollTo({
+            top: targetScroll,
+            behavior: 'smooth'
+          });
+        }
+      } else if (messagesEndRef.current) {
+        // Fallback to scrollIntoView
         messagesEndRef.current.scrollIntoView({ 
           behavior: instant ? 'auto' : 'smooth',
           block: 'end'
         });
-      } else if (messagesContainerRef.current) {
-        // Fallback: scroll container directly
-        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
       }
-    }, instant ? 0 : 100);
+    };
+    
+    // Use requestAnimationFrame for better mobile performance
+    if (instant) {
+      requestAnimationFrame(() => {
+        scroll();
+        // Double-check after a frame
+        requestAnimationFrame(scroll);
+      });
+    } else {
+      setTimeout(() => {
+        requestAnimationFrame(scroll);
+      }, 50);
+    }
   };
 
-  // Auto-scroll when messages change
+  // Auto-scroll when messages change - improved for mobile
   useEffect(() => {
     if (messages.length > 0 && selectedConversation && messagesContainerRef.current) {
-      // Check if this is initial load (scroll position is at top or very small)
       const container = messagesContainerRef.current;
-      const isInitialLoad = container.scrollTop < 50; // Consider it initial if scrolled less than 50px
+      const isInitialLoad = container.scrollTop < 100; // More lenient for mobile
       
       if (isInitialLoad) {
         // For initial load, force instant scroll to bottom
-        setTimeout(() => {
+        requestAnimationFrame(() => {
           if (container) {
             container.scrollTop = container.scrollHeight;
           }
-        }, 50);
-        setTimeout(() => {
-          scrollToBottom(true, true);
-        }, 150);
+          // Double-check after render
+          requestAnimationFrame(() => {
+            if (container) {
+              container.scrollTop = container.scrollHeight;
+            }
+          });
+        });
       } else {
         // For subsequent updates, only scroll if user is near bottom
         scrollToBottom(false, false);
@@ -456,15 +484,19 @@ const Chat = () => {
             refreshUnreadCount();
             
             // Force scroll to bottom after messages are loaded (instant scroll for initial load)
-            // Use multiple timeouts to ensure DOM is fully rendered
-            setTimeout(() => {
+            // Use requestAnimationFrame for better mobile performance
+            requestAnimationFrame(() => {
               if (messagesContainerRef.current) {
-                messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+                const container = messagesContainerRef.current;
+                container.scrollTop = container.scrollHeight;
+                // Double-check after render
+                requestAnimationFrame(() => {
+                  if (container) {
+                    container.scrollTop = container.scrollHeight;
+                  }
+                });
               }
-            }, 100);
-            setTimeout(() => {
-              scrollToBottom(true, true);
-            }, 300);
+            });
           } else {
             // New conversation - no messages yet
             setMessages([]);
@@ -961,25 +993,65 @@ const Chat = () => {
 
   return (
     <div className="h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 overflow-hidden flex flex-col pt-20">
-      <div className="container mx-auto px-4 py-6 flex-1 min-h-0 flex flex-col">
-        <div className="bg-white rounded-2xl shadow-xl overflow-hidden flex-1 min-h-0 flex flex-col">
-          <div className="flex flex-1 min-h-0">
+      <div className="container mx-auto px-2 sm:px-4 py-2 sm:py-6 flex-1 min-h-0 flex flex-col">
+        <div className="bg-white rounded-lg sm:rounded-2xl shadow-xl overflow-hidden flex-1 min-h-0 flex flex-col">
+          <div className="flex flex-1 min-h-0 relative">
+            {/* Mobile Sidebar Toggle Button */}
+            <button
+              onClick={() => setShowSidebar(!showSidebar)}
+              className="lg:hidden fixed top-24 left-4 z-50 p-2 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 transition-colors"
+              aria-label="Toggle sidebar"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+
+            {/* Mobile Overlay */}
+            {showSidebar && (
+              <div
+                className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-40"
+                onClick={() => setShowSidebar(false)}
+              />
+            )}
+
             {/* Conversations Sidebar */}
-            <div className="w-1/3 border-r border-gray-200 flex flex-col min-h-0 overflow-hidden">
-              <div className="p-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+            <div className={`
+              ${showSidebar ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+              fixed lg:static
+              top-0 left-0 h-full lg:h-auto
+              w-80 sm:w-96 lg:w-1/3
+              border-r border-gray-200 
+              flex flex-col min-h-0 overflow-hidden
+              bg-white z-40
+              transition-transform duration-300 ease-in-out
+              shadow-xl lg:shadow-none
+            `}>
+              <div className="p-3 sm:p-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
                 <div className="flex items-center justify-between mb-2">
-                <h2 className="text-2xl font-bold">Messages</h2>
-                  <button
-                    onClick={() => setShowSearch(!showSearch)}
-                    className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
-                    title="Search connections"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  </button>
+                  <h2 className="text-xl sm:text-2xl font-bold">Messages</h2>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowSearch(!showSearch)}
+                      className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+                      title="Search connections"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => setShowSidebar(false)}
+                      className="lg:hidden p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-colors"
+                      title="Close sidebar"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
-                <p className="text-indigo-100 text-sm">{conversations.length} conversations</p>
+                <p className="text-indigo-100 text-xs sm:text-sm">{conversations.length} conversations</p>
               </div>
               
               {/* Search Bar */}
@@ -1105,35 +1177,44 @@ const Chat = () => {
             </div>
 
             {/* Chat Window */}
-            <div className="flex-1 flex flex-col overflow-hidden h-full">
+            <div className="flex-1 flex flex-col overflow-hidden h-full w-full">
               {selectedConversation ? (
                 <>
                   {/* Chat Header - Fixed */}
-                  <div className="p-4 border-b border-gray-200 bg-white flex-shrink-0 z-10">
+                  <div className="p-3 sm:p-4 border-b border-gray-200 bg-white flex-shrink-0 z-10">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
+                      <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+                        <button
+                          onClick={() => setShowSidebar(true)}
+                          className="lg:hidden p-1 mr-1 text-gray-600 hover:text-gray-900"
+                          aria-label="Open sidebar"
+                        >
+                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                          </svg>
+                        </button>
                         <img
                           src={selectedConversation.participant?.profilePicture || `https://ui-avatars.com/api/?name=${selectedConversation.participant?.firstName}+${selectedConversation.participant?.lastName}`}
                           alt={selectedConversation.participant?.firstName}
-                          className="w-10 h-10 rounded-full object-cover"
+                          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full object-cover flex-shrink-0"
                         />
-                        <div>
-                          <h3 className="font-semibold text-gray-900">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-semibold text-gray-900 text-sm sm:text-base truncate">
                             {selectedConversation.participant?.firstName} {selectedConversation.participant?.lastName}
                           </h3>
-                          <p className="text-sm text-gray-500 flex items-center">
+                          <p className="text-xs sm:text-sm text-gray-500 flex items-center">
                             {(() => {
                               const participantId = String(selectedConversation.participant?._id || selectedConversation.participant);
                               const isOnline = onlineUsers.has(participantId);
                               return isOnline ? (
                                 <>
-                                  <span className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>
-                                  Online
+                                  <span className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse flex-shrink-0"></span>
+                                  <span className="truncate">Online</span>
                                 </>
                               ) : (
                                 <>
-                                  <span className="w-2 h-2 bg-gray-400 rounded-full mr-2"></span>
-                                  Offline
+                                  <span className="w-2 h-2 bg-gray-400 rounded-full mr-2 flex-shrink-0"></span>
+                                  <span className="truncate">Offline</span>
                                 </>
                               );
                             })()}
@@ -1142,7 +1223,7 @@ const Chat = () => {
                       </div>
                       <button
                         onClick={() => blockConversation(tokens.accessToken, selectedConversation.participant._id, true)}
-                        className="text-red-600 hover:text-red-700 text-sm font-medium"
+                        className="text-red-600 hover:text-red-700 text-xs sm:text-sm font-medium flex-shrink-0 ml-2"
                       >
                         Block
                       </button>
@@ -1152,10 +1233,13 @@ const Chat = () => {
                   {/* Messages - Scrollable Area */}
                   <div 
                     ref={messagesContainerRef}
-                    className="flex-1 overflow-y-auto p-4 bg-gray-50 min-h-0"
-                    style={{ scrollBehavior: 'auto' }}
+                    className="flex-1 overflow-y-auto p-2 sm:p-4 bg-gray-50 min-h-0"
+                    style={{ 
+                      scrollBehavior: 'auto',
+                      WebkitOverflowScrolling: 'touch' // Smooth scrolling on iOS
+                    }}
                   >
-                    <div className="space-y-4">
+                    <div className="space-y-2 sm:space-y-4">
                       {messages.map((message) => {
                         // Determine if message is sent by current user
                         const senderId = String(message.sender?._id || message.sender || '');
@@ -1180,9 +1264,9 @@ const Chat = () => {
                           )}
                           
                           {/* Message bubble */}
-                          <div className={`max-w-xs lg:max-w-md ${isSent ? 'ml-auto' : ''} ${isSent ? 'flex flex-col items-end' : ''}`}>
+                          <div className={`max-w-[85%] sm:max-w-xs lg:max-w-md ${isSent ? 'ml-auto' : ''} ${isSent ? 'flex flex-col items-end' : ''}`}>
                           <div
-                            className={`rounded-2xl px-4 py-2 ${
+                            className={`rounded-2xl px-3 py-2 sm:px-4 sm:py-2 text-sm sm:text-base ${
                                 isSent
                                 ? 'bg-indigo-600 text-white'
                                 : 'bg-white text-gray-900 border border-gray-200'
@@ -1371,7 +1455,7 @@ const Chat = () => {
                   </div>
 
                   {/* Message Input - Fixed */}
-                  <div className="p-4 border-t border-gray-200 bg-white flex-shrink-0 z-10">
+                  <div className="p-2 sm:p-4 border-t border-gray-200 bg-white flex-shrink-0 z-10 safe-area-inset-bottom">
                     {filePreview && (
                       <div className="mb-2 relative inline-block">
                         <img src={filePreview} alt="Preview" className="w-32 h-32 object-cover rounded-lg" />
@@ -1395,7 +1479,7 @@ const Chat = () => {
                         </button>
                       </div>
                     )}
-                    <form onSubmit={handleSendMessage} className="flex items-center space-x-2">
+                    <form onSubmit={handleSendMessage} className="flex items-center space-x-1 sm:space-x-2">
                       <input
                         type="file"
                         ref={fileInputRef}
@@ -1406,18 +1490,18 @@ const Chat = () => {
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="p-2 text-gray-600 hover:text-indigo-600 transition-colors"
+                        className="p-1.5 sm:p-2 text-gray-600 hover:text-indigo-600 transition-colors flex-shrink-0"
                         title="Attach file"
                       >
-                        📎
+                        <span className="text-lg sm:text-xl">📎</span>
                       </button>
-                      <div className="flex-1 relative">
+                      <div className="flex-1 relative min-w-0">
                       <input
                         type="text"
                         value={messageInput}
                         onChange={handleInputChange}
                         placeholder="Type a message..."
-                          className="w-full px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full px-3 py-2 sm:px-4 sm:py-2 text-sm sm:text-base border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       />
                         {/* Emoji picker for input */}
                         {showInputEmojiPicker && (
@@ -1455,7 +1539,7 @@ const Chat = () => {
                           e.stopPropagation();
                           setShowInputEmojiPicker(!showInputEmojiPicker);
                         }}
-                        className="p-2 text-gray-600 hover:text-indigo-600 transition-colors"
+                        className="p-1.5 sm:p-2 text-gray-600 hover:text-indigo-600 transition-colors flex-shrink-0"
                         title="Add emoji"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1465,9 +1549,9 @@ const Chat = () => {
                       <button
                         type="submit"
                         disabled={sending || (!messageInput.trim() && !selectedFile)}
-                        className="px-6 py-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="px-4 py-2 sm:px-6 sm:py-2 text-sm sm:text-base bg-indigo-600 text-white rounded-full hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
                       >
-                        {sending ? 'Sending...' : 'Send'}
+                        {sending ? '...' : 'Send'}
                       </button>
                     </form>
                   </div>
