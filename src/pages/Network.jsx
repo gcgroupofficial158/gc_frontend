@@ -12,7 +12,7 @@ import {
   getPendingRequests,
   removeConnection 
 } from '../api/friendApi';
-import { getConversations } from '../api/chatApi';
+// Removed getConversations import - not needed here to reduce API calls
 
 const Network = () => {
   const { user, isAuthenticated, tokens } = useAuth();
@@ -76,20 +76,11 @@ const Network = () => {
             console.error('❌ Error fetching pending requests:', error);
           }
 
-          // Fetch conversations to identify users with past chat
-          try {
-            const conversationsRes = await getConversations(tokens.accessToken);
-            if (conversationsRes && conversationsRes.success) {
-              const pastChatUserIds = new Set(
-                (conversationsRes.data?.conversations || []).map(conv => 
-                  String(conv.participant?._id || conv.participant)
-                )
-              );
-              setUsersWithPastChat(pastChatUserIds);
-            }
-          } catch (error) {
-            console.error('❌ Error fetching conversations:', error);
-          }
+          // REMOVED: Fetch conversations - not needed here, only Chat page needs this
+          // This was causing excessive API calls (1 extra request per page load)
+          // The "Send Message" button will work without this - Chat page handles it
+          // If we need to show "has past chat" indicator, we can fetch on-demand or use socket events
+          setUsersWithPastChat(new Set()); // Empty set - will be populated by Chat page if needed
         }
 
         // Fetch all users for explore (after connections are loaded)

@@ -104,18 +104,9 @@ const Profile = () => {
     loadProfile();
   }, [id, isAuthenticated, isViewingOtherProfile, tokens?.accessToken, navigate, user]);
 
-  // Separate effect to load posts/papers and profile when user becomes available (for own profile)
-  useEffect(() => {
-    if (!isAuthenticated || isViewingOtherProfile || loading) return;
-    
-    const userId = user?._id || user?.id;
-    if (userId) {
-      console.log('Loading posts, papers, and profile for user:', userId);
-      loadOwnProfile();
-      loadUserPosts(userId);
-      loadUserPapers(userId);
-    }
-  }, [user?._id, user?.id, isAuthenticated, isViewingOtherProfile, loading]);
+  // REMOVED: Duplicate useEffect - was causing double API calls
+  // The main useEffect above already handles loading own profile
+  // This was causing duplicate requests for posts/papers
 
   // Load user posts (type='post')
   const loadUserPosts = async (userId) => {

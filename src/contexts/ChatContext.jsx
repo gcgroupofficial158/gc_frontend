@@ -12,12 +12,19 @@ export default function ChatProvider({ children }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOnChatPage, setIsOnChatPage] = useState(false);
 
-  // Calculate total unread count from conversations
+  // Calculate total unread count from conversations - debounced to avoid excessive calls
   const calculateUnreadCount = useCallback(async () => {
     if (!isAuthenticated || !tokens?.accessToken) {
       setUnreadCount(0);
       return;
     }
+
+    // Debounce: only allow one call per 2 seconds
+    const now = Date.now();
+    if (calculateUnreadCount.lastCall && now - calculateUnreadCount.lastCall < 2000) {
+      return;
+    }
+    calculateUnreadCount.lastCall = now;
 
     try {
       const response = await getConversations(tokens.accessToken);

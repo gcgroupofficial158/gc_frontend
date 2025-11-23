@@ -43,34 +43,8 @@ const ImageDisplay = ({ attachment, baseURL }) => {
       hasUrl: !!attachment?.url
     });
 
-    // Try to load image as blob if direct loading fails
-    if (url) {
-      fetch(url, { 
-        method: 'GET',
-        credentials: 'include',
-        mode: 'cors'
-      })
-        .then(response => {
-          if (response.ok) {
-            return response.blob();
-          }
-          throw new Error('Failed to fetch image');
-        })
-        .then(blob => {
-          const newBlobUrl = URL.createObjectURL(blob);
-          // Cleanup old blob URL if exists
-          if (blobUrlRef.current) {
-            URL.revokeObjectURL(blobUrlRef.current);
-          }
-          blobUrlRef.current = newBlobUrl;
-          setBlobUrl(newBlobUrl);
-          console.log('✅ Image loaded as blob:', newBlobUrl);
-        })
-        .catch(err => {
-          console.warn('⚠️ Could not load image as blob, will try direct URL:', err);
-          // Will fall back to direct URL
-        });
-    }
+    // Don't fetch as blob - just use direct URL to avoid extra API requests
+    // Images will load directly via img src, which doesn't count as API request
 
     // Cleanup blob URL on unmount or URL change
     return () => {
@@ -501,8 +475,9 @@ const Chat = () => {
           
           // Mark as read
             await markMessagesAsRead(tokens.accessToken, participantId);
-            // Refresh unread count after marking as read
-            refreshUnreadCount();
+            // Refresh unread count after marking as read (debounced in context)
+            // Don't call immediately - let it debounce
+            setTimeout(() => refreshUnreadCount(), 500);
             
             // Force scroll to bottom after messages are loaded (instant scroll for initial load)
             // Use requestAnimationFrame for better mobile performance
@@ -561,24 +536,29 @@ const Chat = () => {
       const senderId = String(data.message.sender?._id || data.message.sender);
       const currentUserId = String(user._id || user.id);
       
-      // Always update conversations list when new message arrives
-      const fetchConversations = async () => {
-        try {
-          const response = await getConversations(tokens.accessToken);
-          const updatedConversations = response.data.conversations || [];
-          setConversations(updatedConversations);
-          
-          // If we're in a temp conversation and a real one was created, switch to it
-          if (selectedConversation?._id?.startsWith('temp-')) {
-            const realConv = updatedConversations.find(conv => 
-              String(conv.participant?._id || conv.participant) === String(selectedConversation.participant?._id)
-            );
-            if (realConv) {
-              setSelectedConversation(realConv);
+      // Update conversations list when new message arrives (but debounce to avoid too many calls)
+      const fetchConversationsDebounced = async () => {
+        // Use a ref to track last fetch time
+        const now = Date.now();
+        if (!fetchConversationsDebounced.lastFetch || now - fetchConversationsDebounced.lastFetch > 2000) {
+          fetchConversationsDebounced.lastFetch = now;
+          try {
+            const response = await getConversations(tokens.accessToken);
+            const updatedConversations = response.data.conversations || [];
+            setConversations(updatedConversations);
+            
+            // If we're in a temp conversation and a real one was created, switch to it
+            if (selectedConversation?._id?.startsWith('temp-')) {
+              const realConv = updatedConversations.find(conv => 
+                String(conv.participant?._id || conv.participant) === String(selectedConversation.participant?._id)
+              );
+              if (realConv) {
+                setSelectedConversation(realConv);
+              }
             }
+          } catch (error) {
+            console.error('Error fetching conversations:', error);
           }
-        } catch (error) {
-          console.error('Error fetching conversations:', error);
         }
       };
       
@@ -611,14 +591,15 @@ const Chat = () => {
           
           // Mark as read
           markMessagesAsRead(tokens.accessToken, senderId).then(() => {
-            // Refresh unread count after marking as read
-            refreshUnreadCount();
+            // Refresh unread count after marking as read (debounced in context)
+            // Don't call immediately - let it debounce
+            setTimeout(() => refreshUnreadCount(), 500);
           });
         }
       }
       
-      // Always update conversations list
-      fetchConversations();
+      // Update conversations list (debounced)
+      fetchConversationsDebounced();
     };
 
     // Message sent confirmation
@@ -643,27 +624,31 @@ const Chat = () => {
         });
         setSending(false);
         
-        // Refresh conversations to get real conversation if it was temp
-        const fetchConversations = async () => {
-          try {
-            const response = await getConversations(tokens.accessToken);
-            const updatedConversations = response.data.conversations || [];
-            setConversations(updatedConversations);
-            
-            // If we're in a temp conversation, switch to real one
-            if (selectedConversation?._id?.startsWith('temp-')) {
-              const realConv = updatedConversations.find(conv => 
-                String(conv.participant?._id || conv.participant) === String(selectedConversation.participant?._id)
-              );
-              if (realConv) {
-                setSelectedConversation(realConv);
+        // Refresh conversations to get real conversation if it was temp (debounced)
+        const now = Date.now();
+        if (!handleMessageSent.lastFetch || now - handleMessageSent.lastFetch > 2000) {
+          handleMessageSent.lastFetch = now;
+          const fetchConversations = async () => {
+            try {
+              const response = await getConversations(tokens.accessToken);
+              const updatedConversations = response.data.conversations || [];
+              setConversations(updatedConversations);
+              
+              // If we're in a temp conversation, switch to real one
+              if (selectedConversation?._id?.startsWith('temp-')) {
+                const realConv = updatedConversations.find(conv => 
+                  String(conv.participant?._id || conv.participant) === String(selectedConversation.participant?._id)
+                );
+                if (realConv) {
+                  setSelectedConversation(realConv);
+                }
               }
+            } catch (error) {
+              console.error('Error fetching conversations:', error);
             }
-          } catch (error) {
-            console.error('Error fetching conversations:', error);
-          }
-        };
-        fetchConversations();
+          };
+          fetchConversations();
+        }
       }
     };
 
@@ -686,17 +671,21 @@ const Chat = () => {
       }
     };
 
-    // Conversation updated
+    // Conversation updated - debounced to avoid excessive calls
     const handleConversationUpdated = () => {
-      const fetchConversations = async () => {
-        try {
-          const response = await getConversations(tokens.accessToken);
-          setConversations(response.data.conversations || []);
-        } catch (error) {
-          console.error('Error fetching conversations:', error);
-        }
-      };
-      fetchConversations();
+      const now = Date.now();
+      if (!handleConversationUpdated.lastFetch || now - handleConversationUpdated.lastFetch > 2000) {
+        handleConversationUpdated.lastFetch = now;
+        const fetchConversations = async () => {
+          try {
+            const response = await getConversations(tokens.accessToken);
+            setConversations(response.data.conversations || []);
+          } catch (error) {
+            console.error('Error fetching conversations:', error);
+          }
+        };
+        fetchConversations();
+      }
     };
 
     // Online status handler
@@ -745,8 +734,8 @@ const Chat = () => {
             ? { ...msg, isRead: true, readAt: data.readAt } 
             : msg
         ));
-        // Refresh unread count when message is read
-        refreshUnreadCount();
+        // Refresh unread count when message is read (debounced in context)
+        setTimeout(() => refreshUnreadCount(), 500);
       }
     };
 
