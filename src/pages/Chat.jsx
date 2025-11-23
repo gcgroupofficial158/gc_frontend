@@ -357,11 +357,23 @@ const Chat = () => {
     }
   };
 
-  // Handle search input change
+  // Debounce timer for search
+  const searchDebounceRef = useRef(null);
+
+  // Handle search input change with debouncing
   const handleSearchInputChange = (e) => {
     const query = e.target.value;
     setSearchQuery(query);
-    handleSearchConnections(query);
+    
+    // Clear previous debounce timer
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+    
+    // Debounce search API calls - wait 500ms after user stops typing
+    searchDebounceRef.current = setTimeout(() => {
+      handleSearchConnections(query);
+    }, 500);
   };
 
   // Handle selecting a user from search to start conversation
@@ -395,6 +407,15 @@ const Chat = () => {
     setSearchQuery('');
     setSearchResults([]);
   };
+
+  // Cleanup search debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, []);
 
   // Check URL params for userId (when navigating from Network page)
   useEffect(() => {
